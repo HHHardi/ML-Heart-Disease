@@ -1,0 +1,510 @@
+---
+title: "finalproj"
+output: html_document
+date: '2022-11-25'
+---
+
+
+#https://www.kaggle.com/datasets/kamilpytlak/personal-key-indicators-of-heart-disease
+
+#Personal Key Indicators of Heart Disease
+#2020 annual CDC survey data of 400k adults related to their health status
+
+
+
+
+
+```{r}
+library(tidyverse) # for data manipulation
+library(tidytext) # for tokenization
+library(textstem) # for word stemming and lemmatization
+library(caret) # for classification
+library(ggplot2)
+library(ggbump)
+library(Hmisc)
+library(caret)
+library(caTools)
+library(arules)
+library(arulesViz)
+```
+
+
+```{r}
+setwd ("C:/Users/Hardi/Downloads/" )
+data<-read.csv('heart_2020_cleaned.csv')
+head(data)
+```
+#build data set 
+```{r}
+set.seed(1)
+df_1<-subset(data,HeartDisease=='Yes')
+df_1<-df_1[sample(nrow(df_1),size=50),]
+#random select 50 rows which people have HeartDisease from orginal set
+
+df_2<-subset(data,HeartDisease=='No')
+df_2<-df_2[sample(nrow(df_2),size=50),]
+##random select 50 rows which people not have HeartDisease from orginal set
+
+df<-rbind(df_1,df_2)
+#build data set
+
+
+```
+
+```{r}
+head(df)
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+summary(df)
+```
+
+```{r}
+hist.data.frame(df)
+```
+
+#Data pre-processing 
+###To deal with BMI 
+```{r}
+#If your BMI is less than 18.5, it falls within the underweight range. 
+#If your BMI is 18.5 to 24.9, it falls within the normal or Healthy Weight range. 
+#If your BMI is 25.0 to 29.9, it falls within the overweight range.
+#https://www.cdc.gov/healthyweight/assessing/bmi/adult_bmi/
+hist(df$BMI)
+```
+
+```{r}
+df[,'BMI']<-cut(df$BMI,breaks=c(0,18.5,25,30,60),labels = c('under weight','normal weight','over weight','obese weight'))
+#rebuild BMI column as define 'underweight','normalweight','overweight','obese weight'
+```
+
+```{r}
+View(df)
+```
+###deal with sleep time
+```{r}
+#Most adults need 7 to 9 hours, although some people may need as few as 6 hours or as many as 10 hours of sleep each day.
+#Older adults (ages 65 and older) need 7-8 hours of sleep each day. 
+#https://www.cdc.gov/sleep/about_sleep/how_much_sleep.html
+hist(df$SleepTime)
+```
+
+```{r}
+df[,'SleepTime']<-cut(df$SleepTime,breaks=c(0,6,9,12),labels = c('less sleep','good sleep','over sleep'))
+
+```
+
+###deal with PhysicalHealth and MentalHealth
+```{r}
+hist(df$PhysicalHealth)
+```
+
+```{r}
+hist(df$MentalHealth)
+```
+
+```{r}
+df[,'PhysicalHealth']<-cut(df$PhysicalHealth,breaks=c(-1,0,25,30),labels = c('no Physical problem','sometimes Physical problem','always   problem'))
+df[,'MentalHealth']<-cut(df$MentalHealth,breaks=c(-1,0,25,30),labels = c('no Mental problem','sometimes Mental problem','always Mental problem'))
+```
+
+
+
+###Data pre-processing for others
+```{r}
+df$Smoking<-ifelse(df$Smoking == "Yes", 'smoke', 'not smoke') 
+df$AlcoholDrinking<-ifelse(df$AlcoholDrinking == "Yes", 'drink alcohol', 'no drink alcohol') 
+df$Stroke<-ifelse(df$Stroke == "Yes", 'have Stroke', 'no Stroke') 
+df$DiffWalking<-ifelse(df$DiffWalking == "Yes", 'Diff to Walk', 'Ok to walk') 
+df$Diabetic<-ifelse(df$Diabetic == "Yes", 'have Diabetic', 'no Diabetic') 
+df$PhysicalActivity<-ifelse(df$PhysicalActivity == "Yes", 'have PhysicalActivity', 'no PhysicalActivity') 
+df$Asthma<-ifelse(df$Asthma == "Yes", 'have Asthma', 'no Asthma') 
+df$KidneyDisease<-ifelse(df$KidneyDisease == "Yes", 'have KidneyDisease', 'no KidneyDisease') 
+df$SkinCancer<-ifelse(df$SkinCancer == "Yes", 'have SkinCancer', 'no SkinCancer') 
+#re-name the value in each columns to raplce y/n
+```
+
+```{r}
+head(df) 
+```
+
+```{r}
+hist.data.frame(df)
+```
+#Rules
+###RHS HeartDisease
+```{r}
+rule_rhs = apriori(data = df,
+                parameter=list(supp = 0.04,
+                               conf = 0.8,
+                               minlen = 1),
+               appearance = list(default = 'lhs',
+                                 rhs = 'HeartDisease=Yes'),
+               control = list(verbose=F))
+#HeartDisease=Yes as RHS to see what may cause HeartDisease
+
+rule_rhs = sort(rule_rhs,
+             by = 'confidence',
+             decreasing = TRUE)
+#sort by confidence
+
+inspect(rule_rhs[1:20])
+```
+
+
+```{r}
+rule_rhs_s<-sort(rule_rhs,
+             by = 'support', 
+             decreasing = TRUE)
+inspect(rule_rhs_s[1:10])
+#sort by support
+```
+
+```{r}
+rule_rhs_l<-sort(rule_rhs,
+             by = 'lift', 
+             decreasing = TRUE)
+inspect(rule_rhs_l[1:10])
+#sort by lift
+```
+
+### RHS healthy
+```{r}
+rule_rhs_h = apriori(data = df,
+                parameter=list(supp = 0.04,
+                               conf = 0.8,
+                               minlen = 1),
+               appearance = list(default = 'lhs',
+                                 rhs = 'HeartDisease=No'),
+               control = list(verbose=F))
+#HeartDisease=no as RHS to how to be healthy 
+
+rule_rhs_h = sort(rule_rhs_h,
+             by = 'confidence',
+             decreasing = TRUE)
+#sort by confidence
+inspect(rule_rhs_h[1:5])
+```
+
+###LHS
+```{r}
+rule = apriori(df,
+                parameter = list(supp = 0.05 , conf = 0.8))
+rule<-sort(rule,
+             by = 'confidence', 
+             decreasing = TRUE)
+#sort by confidence
+inspect(rule[1:20])
+```
+
+
+#graphic
+###build new data set
+```{r}
+df_y<-df[df$HeartDisease=='Yes',]
+df_n<-df[df$HeartDisease=='No',]
+
+df_y<-df_y %>%rename(YHeartDisease=HeartDisease,
+               YBMI=BMI,
+               YSmoking=Smoking,
+               YAlcoholDrinking=AlcoholDrinking,
+               YStroke=Stroke,
+               YPhysicalHealth=PhysicalHealth,
+               YMentalHealth=MentalHealth,
+               YDiffWalking=DiffWalking,
+               YSex=Sex,
+               YAgeCategory=AgeCategory,
+               YRace=Race,
+               YDiabetic=Diabetic,
+               YPhysicalActivity=PhysicalActivity,
+               YGenHealth =GenHealth ,
+               YSleepTime=SleepTime,
+               YAsthma=Asthma,
+               YKidneyDisease=KidneyDisease,
+               YSkinCancer=SkinCancer)
+
+df_n<-df_n %>%rename(NHeartDisease=HeartDisease,
+               NBMI=BMI,
+               NSmoking=Smoking,
+               NAlcoholDrinking=AlcoholDrinking,
+               NStroke=Stroke,
+               NPhysicalHealth=PhysicalHealth,
+               NMentalHealth=MentalHealth,
+               NDiffWalking=DiffWalking,
+               NSex=Sex,
+               NAgeCategory=AgeCategory,
+               NRace=Race,
+               NDiabetic=Diabetic,
+               NPhysicalActivity=PhysicalActivity,
+               NGenHealth =GenHealth ,
+               NSleepTime=SleepTime,
+               NAsthma=Asthma,
+               NKidneyDisease=KidneyDisease,
+               NSkinCancer=SkinCancer)
+
+df_t<-cbind(df_y,df_n)
+head(df_t)
+```
+### diffs of age 
+```{r}
+ggplot(data = df, mapping = aes(x=AgeCategory,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+### diffs of age smoking
+```{r}
+ggplot(data =df_y, mapping = aes(y=YSmoking,fill=YHeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+#people have HeartDisease
+```
+
+```{r}
+ggplot(data =df_n, mapping = aes(y=NSmoking,fill=NHeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+#people not have HeartDisease
+```
+### diffs of BMI
+```{r}
+ggplot(data = df, mapping = aes(x=BMI,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+### diffs of Alcohol
+```{r}
+ggplot(data = df, mapping = aes(x=AlcoholDrinking,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+###diffs of 
+
+```{r}
+ggplot(data = df, mapping = aes(x=Stroke,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+### diffs of SkinCancer
+
+```{r}
+ggplot(data = df, mapping = aes(x=SkinCancer,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+### diffs of MentalHealth
+
+```{r}
+ggplot(data = df, mapping = aes(x=MentalHealth,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+### diffs of PhysicalHealth
+
+```{r}
+
+ggplot(data = df, mapping = aes(x=PhysicalHealth,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+### diffs of Diabetic
+```{r}
+ggplot(data = df, mapping = aes(x=Diabetic,fill=HeartDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+
+
+##Others graph
+###Diff of Alcohol & kidneydisease
+```{r}
+ggplot(data = df, mapping = aes(x=AlcoholDrinking,fill=KidneyDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+```{r}
+ggplot(data = df, mapping = aes(x=Smoking,fill=KidneyDisease)) + 
+geom_bar(position = 'stack')+
+scale_x_discrete(guide=guide_axis(angle=15))
+```
+
+
+
+
+#Machine learning
+###pre=processing
+```{r}
+dfr<-df%>%mutate_all(as.factor)
+summary(dfr)
+```
+
+```{r}
+str(dfr)
+```
+
+###build test&train set
+```{r}
+set.seed(666) 
+split = sample.split(dfr$HeartDisease, SplitRatio = 0.8) 
+  
+training = subset(dfr, split == TRUE) 
+test = subset(dfr, split == FALSE) 
+```
+###10-fold cv
+```{r}
+train.control = trainControl(
+  method = 'repeatedcv', 
+  number = 10,
+  repeats = 10
+  )
+```
+
+### Random forest
+```{r}
+search.grid = expand.grid(.mtry = (1:10)) 
+
+rf = train(HeartDisease ~.,
+           data = training, 
+           method = 'rf',
+           metric = 'Accuracy',
+           trControl = train.control,
+           tuneGrid = search.grid)
+```
+
+```{r}
+confusionMatrix(rf)
+```
+
+
+```{r}
+pred = predict(rf, newdata = test)
+confusionMatrix(pred, test$HeartDisease)
+```
+###SVM
+```{r}
+search.grid = expand.grid(degree = c(1, 2, 3),scale=c(1),C = seq(0.1, 2, length = 10))
+
+svm = train(HeartDisease ~.,
+            data = training,
+            method = 'svmPoly',
+            trControl = train.control,
+            scale = FALSE,
+            tuneGrid = search.grid)
+```
+
+```{r}
+confusionMatrix(svm)
+```
+
+```{r}
+pred = predict(svm, newdata = test)
+confusionMatrix(pred, test$HeartDisease)
+```
+
+##Improve
+```{r}
+dfr<-dfr[,c(-4,-7,-11,-18)]
+#delete the seems unrelated columns
+```
+
+```{r}
+str(dfr)
+```
+#re-build Ramdom forest
+```{r}
+set.seed(666) 
+split = sample.split(dfr$HeartDisease, SplitRatio = 0.8) 
+  
+training = subset(dfr, split == TRUE) 
+test = subset(dfr, split == FALSE) 
+```
+
+
+```{r}
+search.grid = expand.grid(.mtry = (1:10)) 
+
+rf = train(HeartDisease ~.,
+           data = training, 
+           method = 'rf',
+           metric = 'Accuracy',
+           trControl = train.control,
+           tuneGrid = search.grid)
+```
+
+```{r}
+confusionMatrix(rf)
+```
+
+```{r}
+pred = predict(rf, newdata = test)
+confusionMatrix(pred, test$HeartDisease)
+```
+#re-build the SVM
+```{r}
+search.grid = expand.grid(degree = c(1, 2, 3),scale=c(1),C = seq(0.1, 2, length = 10))
+
+svm = train(HeartDisease ~.,
+            data = training,
+            method = 'svmPoly',
+            trControl = train.control,
+            scale = FALSE,
+            tuneGrid = search.grid)
+```
+
+```{r}
+confusionMatrix(svm)
+```
+
+```{r}
+pred = predict(svm, newdata = test)
+confusionMatrix(pred, test$HeartDisease)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
